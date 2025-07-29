@@ -1,6 +1,6 @@
-azure-ai-projects
-azure-identity
-azure-ai-agents
-python-dotenv
-requests
+azure-ai-projects==1.0.0b12
+azure-identity==1.23.1
+azure-ai-agents==1.1.0b4
+python-dotenv==1.1.1
+requests==2.32.4
 beautifulsoup4
