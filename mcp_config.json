@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "azure-research": {
+      "command": "python",
+      "args": ["src/mcp_server.py"],
+      "env": {
+        "PROJECT_ENDPOINT": "${PROJECT_ENDPOINT}",
+        "MODEL_DEPLOYMENT_NAME": "${MODEL_DEPLOYMENT_NAME}",
+        "DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME": "${DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME}",
+        "BING_RESOURCE_NAME": "${BING_RESOURCE_NAME}",
+        "ADO_PAT": "${ADO_PAT}"
+      }
+    }
+  }
+}
