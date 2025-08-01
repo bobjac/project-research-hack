@@ -360,9 +360,10 @@ class DocumentGenerationTool:
         if connection_string:
             # Check if it's a SAS URL or connection string
             if connection_string.startswith("https://") and "?" in connection_string:
-                # It's a SAS URL, extract account URL and use SAS token
-                account_url = connection_string.split("?")[0].rsplit("/", 1)[0]  # Remove container and SAS params
-                return BlobServiceClient(account_url=account_url)
+                # It's a SAS URL, extract account URL and include SAS token
+                account_url = connection_string.split("?")[0].rsplit("/", 1)[0]  # Remove container from URL
+                sas_token = connection_string.split("?", 1)[1]  # Get SAS parameters
+                return BlobServiceClient(account_url=account_url + "?" + sas_token)
             else:
                 # It's a proper connection string
                 return BlobServiceClient.from_connection_string(connection_string)
@@ -479,3 +480,108 @@ class DocumentGenerationTool:
             
         except Exception as e:
             return f"Failed to upload to blob storage: {e}"
+    
+    def list_documents(self, storage_container: str = "projects") -> str:
+        """List all documents in the blob storage container.
+        
+        Args:
+            storage_container: Azure storage container name
+            
+        Returns:
+            str: JSON formatted list of documents with metadata
+        """
+        try:
+            connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+            
+            if connection_string and connection_string.startswith("https://") and "?" in connection_string:
+                # Check if it's an account-level SAS or container-level SAS
+                if f"/{storage_container}?" in connection_string:
+                    # Container-specific SAS URL
+                    from azure.storage.blob import ContainerClient
+                    container_client = ContainerClient.from_container_url(connection_string)
+                else:
+                    # Account-level SAS URL - create BlobServiceClient then get container client
+                    blob_service_client = self._get_blob_service_client()
+                    container_client = blob_service_client.get_container_client(storage_container)
+            else:
+                # Use blob service client for connection strings
+                blob_service_client = self._get_blob_service_client()
+                container_client = blob_service_client.get_container_client(storage_container)
+            
+            documents = []
+            blob_list = container_client.list_blobs(include=['metadata'])
+            
+            for blob in blob_list:
+                documents.append({
+                    "name": blob.name,
+                    "size": blob.size,
+                    "last_modified": blob.last_modified.isoformat() if blob.last_modified else None,
+                    "content_type": blob.content_settings.content_type if blob.content_settings else None,
+                    "url": f"{container_client.url.split('?')[0]}/{blob.name}"
+                })
+            
+            return json.dumps({"documents": documents}, indent=2)
+            
+        except Exception as e:
+            return f"Failed to list documents: {e}"
+    
+    def download_document(self, filename: str, storage_container: str = "projects") -> str:
+        """Download a document from blob storage and return its content or download URL.
+        
+        Args:
+            filename: Name of the file to download
+            storage_container: Azure storage container name
+            
+        Returns:
+            str: Download URL or content for text files
+        """
+        try:
+            connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+            
+            if connection_string and connection_string.startswith("https://") and "?" in connection_string:
+                # Check if it's an account-level SAS or container-level SAS
+                if f"/{storage_container}?" in connection_string:
+                    # Container-specific SAS URL
+                    from azure.storage.blob import ContainerClient
+                    container_client = ContainerClient.from_container_url(connection_string)
+                    blob_client = container_client.get_blob_client(filename)
+                else:
+                    # Account-level SAS URL - create BlobServiceClient then get blob client
+                    blob_service_client = self._get_blob_service_client()
+                    blob_client = blob_service_client.get_blob_client(container=storage_container, blob=filename)
+            else:
+                # Use blob service client
+                blob_service_client = self._get_blob_service_client()
+                blob_client = blob_service_client.get_blob_client(container=storage_container, blob=filename)
+            
+            # Get blob properties to check content type
+            blob_properties = blob_client.get_blob_properties()
+            content_type = blob_properties.content_settings.content_type if blob_properties.content_settings else ""
+            
+            # For text files (markdown), return the content directly
+            if content_type == "text/markdown" or filename.endswith('.md'):
+                blob_data = blob_client.download_blob()
+                content = blob_data.readall().decode('utf-8')
+                
+                return json.dumps({
+                    "filename": filename,
+                    "content_type": content_type,
+                    "size": blob_properties.size,
+                    "last_modified": blob_properties.last_modified.isoformat() if blob_properties.last_modified else None,
+                    "content": content
+                }, indent=2)
+            else:
+                # For binary files (Word docs), return download URL with SAS token
+                download_url = blob_client.url  # Keep SAS token for authentication
+                
+                return json.dumps({
+                    "filename": filename,
+                    "content_type": content_type,
+                    "size": blob_properties.size,
+                    "last_modified": blob_properties.last_modified.isoformat() if blob_properties.last_modified else None,
+                    "download_url": download_url,
+                    "message": "Binary file - use download_url to access the document"
+                }, indent=2)
+                
+        except Exception as e:
+            return f"Failed to download document '{filename}': {e}"

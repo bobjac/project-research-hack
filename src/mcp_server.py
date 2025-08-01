@@ -13,10 +13,7 @@ from mcp import server
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 from mcp_tools import AzureDevOpsMCPTool, DeepResearchMCPTool, ProjectKickoffTool, DocumentGenerationTool
-from async_research_service import research_service
-from simple_async_research import simple_research
-from fast_research_service import fast_research
-from robust_deep_research import robust_deep_research
+from unified_research_service import unified_research_service, ResearchStrategy
 
 # Initialize tools
 ado_tool = AzureDevOpsMCPTool()
@@ -60,37 +57,8 @@ async def handle_list_tools() -> list[Tool]:
             }
         ),
         Tool(
-            name="structured_research",
-            description="Perform structured research using predefined templates (technical, market, risk, stakeholder)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "research_type": {
-                        "type": "string",
-                        "description": "Type of research to perform",
-                        "enum": ["technical", "market", "risk", "stakeholder"]
-                    },
-                    "project_context": {
-                        "type": "object",
-                        "description": "Project context information",
-                        "properties": {
-                            "project_name": {"type": "string"},
-                            "project_context": {"type": "string"},
-                            "technology_stack": {"type": "string"},
-                            "domain": {"type": "string"},
-                            "industry": {"type": "string"},
-                            "timeline": {"type": "string"},
-                            "organization": {"type": "string"}
-                        },
-                        "required": ["project_name", "project_context"]
-                    }
-                },
-                "required": ["research_type", "project_context"]
-            }
-        ),
-        Tool(
-            name="research_project_kickoff",
-            description="Perform comprehensive project kickoff research by combining ADO story details with structured research",
+            name="start_research",
+            description="Start research with specified strategy: simple (1-2 min), fast (2-3 min), async (5-10 min), or deep (20-30 min)",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -98,27 +66,14 @@ async def handle_list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Azure DevOps story ID"
                     },
-                    "research_types": {
-                        "type": "array",
-                        "items": {
-                            "type": "string",
-                            "enum": ["technical", "market", "risk", "stakeholder"]
-                        },
-                        "description": "List of research types to perform (default: all types)"
-                    }
-                },
-                "required": ["story_id"]
-            }
-        ),
-        Tool(
-            name="start_async_research",
-            description="Start long-running project kickoff research in background (returns job ID for status checking)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "story_id": {
+                    "strategy": {
                         "type": "string",
-                        "description": "Azure DevOps story ID"
+                        "enum": ["simple", "fast", "async", "deep"],
+                        "description": "Research strategy: simple=debug/test, fast=templates, async=structured research, deep=AI agents"
+                    },
+                    "custom_prompt": {
+                        "type": "string",
+                        "description": "Custom research prompt (required for deep strategy)"
                     },
                     "research_types": {
                         "type": "array",
@@ -126,21 +81,21 @@ async def handle_list_tools() -> list[Tool]:
                             "type": "string",
                             "enum": ["technical", "market", "risk", "stakeholder"]
                         },
-                        "description": "List of research types (default: technical, market for speed)"
+                        "description": "Research types for async strategy (default: technical, market)"
                     }
                 },
-                "required": ["story_id"]
+                "required": ["story_id", "strategy"]
             }
         ),
         Tool(
             name="check_research_status",
-            description="Check status of background research job",
+            description="Check status of any research job",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "job_id": {
                         "type": "string",
-                        "description": "Research job ID returned from start_async_research"
+                        "description": "Research job ID"
                     }
                 },
                 "required": ["job_id"]
@@ -156,88 +111,14 @@ async def handle_list_tools() -> list[Tool]:
             }
         ),
         Tool(
-            name="test_async_research",
-            description="Test simple async research (ADO fetch only) to debug issues",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "story_id": {
-                        "type": "string",
-                        "description": "Azure DevOps story ID"
-                    }
-                },
-                "required": ["story_id"]
-            }
-        ),
-        Tool(
-            name="check_test_status",
-            description="Check status of test async research",
+            name="get_research_results",
+            description="Get complete results for a completed research job",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "job_id": {
                         "type": "string",
-                        "description": "Test job ID"
-                    }
-                },
-                "required": ["job_id"]
-            }
-        ),
-        Tool(
-            name="fast_project_research",
-            description="Fast project kickoff research using template-based approach (completes in 2-3 minutes)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "story_id": {
-                        "type": "string",
-                        "description": "Azure DevOps story ID"
-                    }
-                },
-                "required": ["story_id"]
-            }
-        ),
-        Tool(
-            name="check_fast_status",
-            description="Check status of fast research job",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "job_id": {
-                        "type": "string",
-                        "description": "Fast research job ID"
-                    }
-                },
-                "required": ["job_id"]
-            }
-        ),
-        Tool(
-            name="start_custom_deep_research",
-            description="Start custom deep research with Azure AI agents (20-30 minutes) using your own prompt template",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "story_id": {
-                        "type": "string",
-                        "description": "Azure DevOps story ID for project context"
-                    },
-                    "custom_prompt": {
-                        "type": "string",
-                        "description": "Your custom research prompt template (will be combined with project context)"
-                    }
-                },
-                "required": ["story_id", "custom_prompt"]
-            }
-        ),
-        Tool(
-            name="check_deep_research_status",
-            description="Check status of custom deep research job",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "job_id": {
-                        "type": "string",
-                        "description": "Deep research job ID"
+                        "description": "Research job ID"
                     }
                 },
                 "required": ["job_id"]
@@ -265,6 +146,38 @@ async def handle_list_tools() -> list[Tool]:
                 },
                 "required": ["content"]
             }
+        ),
+        Tool(
+            name="list_research_documents",
+            description="List all research documents in the blob storage container",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "storage_container": {
+                        "type": "string",
+                        "description": "Azure storage container name (default: projects)"
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="download_research_document",
+            description="Download a research document from blob storage",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "Name of the file to download"
+                    },
+                    "storage_container": {
+                        "type": "string",
+                        "description": "Azure storage container name (default: projects)"
+                    }
+                },
+                "required": ["filename"]
+            }
         )
     ]
 
@@ -290,23 +203,64 @@ async def handle_call_tool(name: str, arguments: dict[str, Any] | None) -> list[
         result = research_tool.deep_research(query)
         return [TextContent(type="text", text=result)]
     
-    elif name == "structured_research":
-        research_type = arguments.get("research_type")
-        project_context = arguments.get("project_context")
-        if not research_type or not project_context:
-            return [TextContent(type="text", text="Error: research_type and project_context are required")]
-        
-        result = research_tool.structured_research(research_type, project_context)
-        return [TextContent(type="text", text=result)]
-    
-    elif name == "research_project_kickoff":
+    elif name == "start_research":
         story_id = arguments.get("story_id")
+        strategy = arguments.get("strategy")
+        custom_prompt = arguments.get("custom_prompt")
         research_types = arguments.get("research_types")
-        if not story_id:
-            return [TextContent(type="text", text="Error: story_id is required")]
         
-        result = kickoff_tool.research_project_kickoff(story_id, research_types)
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        if not story_id or not strategy:
+            return [TextContent(type="text", text="Error: story_id and strategy are required")]
+        
+        # Validate strategy-specific requirements
+        if strategy == "deep" and not custom_prompt:
+            return [TextContent(type="text", text="Error: custom_prompt is required for deep research strategy")]
+        
+        try:
+            strategy_enum = ResearchStrategy(strategy)
+            job_id = unified_research_service.start_research(
+                story_id=story_id,
+                strategy=strategy_enum,
+                custom_prompt=custom_prompt,
+                research_types=research_types
+            )
+            
+            duration_msgs = {
+                "simple": "1-2 minutes (debug/test mode)",
+                "fast": "2-3 minutes (template-based)", 
+                "async": "5-10 minutes (structured research)",
+                "deep": "20-30 minutes (AI agents with Bing grounding)"
+            }
+            
+            return [TextContent(type="text", text=f"Started {strategy} research job: {job_id}\n\nEstimated duration: {duration_msgs[strategy]}\n\nUse 'check_research_status' with this job_id to monitor progress.")]
+        
+        except ValueError:
+            return [TextContent(type="text", text="Error: Invalid strategy. Must be one of: simple, fast, async, deep")]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error starting research: {str(e)}")]
+    
+    elif name == "check_research_status":
+        job_id = arguments.get("job_id")
+        if not job_id:
+            return [TextContent(type="text", text="Error: job_id is required")]
+        
+        status = unified_research_service.get_status(job_id)
+        return [TextContent(type="text", text=json.dumps(status, indent=2))]
+    
+    elif name == "list_research_jobs":
+        jobs = unified_research_service.list_jobs()
+        return [TextContent(type="text", text=json.dumps(jobs, indent=2))]
+    
+    elif name == "get_research_results":
+        job_id = arguments.get("job_id")
+        if not job_id:
+            return [TextContent(type="text", text="Error: job_id is required")]
+        
+        results = unified_research_service.get_results(job_id)
+        if results is None:
+            return [TextContent(type="text", text="Error: Job not found or not completed yet")]
+        
+        return [TextContent(type="text", text=json.dumps(results, indent=2))]
     
     elif name == "generate_document":
         content = arguments.get("content")
@@ -318,75 +272,19 @@ async def handle_call_tool(name: str, arguments: dict[str, Any] | None) -> list[
         result = doc_tool.generate_document(content, document_type, storage_container)
         return [TextContent(type="text", text=result)]
     
-    elif name == "start_async_research":
-        story_id = arguments.get("story_id")
-        research_types = arguments.get("research_types", ["technical", "market"])
-        if not story_id:
-            return [TextContent(type="text", text="Error: story_id is required")]
-        
-        job_id = research_service.start_research(story_id, research_types)
-        return [TextContent(type="text", text=f"Started background research job: {job_id}\nUse 'check_research_status' with this job_id to monitor progress.")]
+    elif name == "list_research_documents":
+        storage_container = arguments.get("storage_container", "projects")
+        result = doc_tool.list_documents(storage_container)
+        return [TextContent(type="text", text=result)]
     
-    elif name == "check_research_status":
-        job_id = arguments.get("job_id")
-        if not job_id:
-            return [TextContent(type="text", text="Error: job_id is required")]
+    elif name == "download_research_document":
+        filename = arguments.get("filename")
+        storage_container = arguments.get("storage_container", "projects")
+        if not filename:
+            return [TextContent(type="text", text="Error: filename is required")]
         
-        status = research_service.get_status(job_id)
-        return [TextContent(type="text", text=json.dumps(status, indent=2))]
-    
-    elif name == "list_research_jobs":
-        jobs = research_service.list_jobs()
-        return [TextContent(type="text", text=json.dumps(jobs, indent=2))]
-    
-    elif name == "test_async_research":
-        story_id = arguments.get("story_id")
-        if not story_id:
-            return [TextContent(type="text", text="Error: story_id is required")]
-        
-        job_id = simple_research.start_research(story_id)
-        return [TextContent(type="text", text=f"Started test research job: {job_id}")]
-    
-    elif name == "check_test_status":
-        job_id = arguments.get("job_id")
-        if not job_id:
-            return [TextContent(type="text", text="Error: job_id is required")]
-        
-        status = simple_research.get_status(job_id)
-        return [TextContent(type="text", text=json.dumps(status, indent=2))]
-    
-    elif name == "fast_project_research":
-        story_id = arguments.get("story_id")
-        if not story_id:
-            return [TextContent(type="text", text="Error: story_id is required")]
-        
-        job_id = fast_research.start_research(story_id)
-        return [TextContent(type="text", text=f"Started fast research job: {job_id}\nThis should complete in 2-3 minutes with template-based research and document generation.")]
-    
-    elif name == "check_fast_status":
-        job_id = arguments.get("job_id")
-        if not job_id:
-            return [TextContent(type="text", text="Error: job_id is required")]
-        
-        status = fast_research.get_status(job_id)
-        return [TextContent(type="text", text=json.dumps(status, indent=2))]
-    
-    elif name == "start_custom_deep_research":
-        story_id = arguments.get("story_id")
-        custom_prompt = arguments.get("custom_prompt")
-        if not story_id or not custom_prompt:
-            return [TextContent(type="text", text="Error: both story_id and custom_prompt are required")]
-        
-        job_id = robust_deep_research.start_deep_research(story_id, custom_prompt)
-        return [TextContent(type="text", text=f"Started custom deep research job: {job_id}\n\nThis will use Azure AI agents with Bing grounding and is expected to take 20-30 minutes. Use 'check_deep_research_status' to monitor progress.\n\nYour custom prompt will be combined with the project context from ADO story {story_id}.")]
-    
-    elif name == "check_deep_research_status":
-        job_id = arguments.get("job_id")
-        if not job_id:
-            return [TextContent(type="text", text="Error: job_id is required")]
-        
-        status = robust_deep_research.get_status(job_id)
-        return [TextContent(type="text", text=json.dumps(status, indent=2))]
+        result = doc_tool.download_document(filename, storage_container)
+        return [TextContent(type="text", text=result)]
     
     else:
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
