@@ -12,6 +12,13 @@ from typing import Any, Sequence
 from mcp import server
 from mcp.server import Server
 from mcp.types import Tool, TextContent
+
+# Ensure environment variables are loaded (backup to Claude Desktop config)
+from dotenv import load_dotenv
+from pathlib import Path
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
+
 from mcp_tools import AzureDevOpsMCPTool, DeepResearchMCPTool, ProjectKickoffTool, DocumentGenerationTool
 from unified_research_service import unified_research_service, ResearchStrategy
 

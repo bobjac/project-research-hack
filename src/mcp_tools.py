@@ -473,8 +473,16 @@ class DocumentGenerationTool:
         # Add research results
         if "research_results" in content:
             for research_type, results in content["research_results"].items():
-                doc.add_heading(f"{research_type.title()} Research", level=1)
-                doc.add_paragraph(results)
+                # Clean up research type name for display
+                display_name = research_type.replace("_", " ").title()
+                doc.add_heading(f"{display_name} Research", level=1)
+                
+                # Handle empty or invalid results
+                if results and isinstance(results, str) and results.strip():
+                    doc.add_paragraph(results)
+                else:
+                    doc.add_paragraph("Research results were not available or could not be generated.")
+                    
                 doc.add_page_break()
         
         # Add generation timestamp
@@ -516,8 +524,15 @@ class DocumentGenerationTool:
         # Add research results
         if "research_results" in content:
             for research_type, results in content["research_results"].items():
-                md_content += f"## {research_type.title()} Research\n\n"
-                md_content += results + "\n\n"
+                # Clean up research type name for display
+                display_name = research_type.replace("_", " ").title()
+                md_content += f"## {display_name} Research\n\n"
+                
+                # Handle empty or invalid results
+                if results and isinstance(results, str) and results.strip():
+                    md_content += results + "\n\n"
+                else:
+                    md_content += "Research results were not available or could not be generated.\n\n"
         
         # Add generation timestamp
         md_content += f"\n*Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*\n"

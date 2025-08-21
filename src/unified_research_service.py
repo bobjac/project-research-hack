@@ -206,7 +206,7 @@ class FastResearchExecutor(ResearchExecutor):
             }
             
             doc_tool = DocumentGenerationTool()
-            doc_url = doc_tool.generate_document(final_result, "word", "projects", attach_to_ado=True, story_id=job.story_id)
+            doc_url = doc_tool.generate_document(final_result, "markdown", "projects", attach_to_ado=True, story_id=job.story_id)
             
             # Complete
             job.status = "completed"
@@ -396,7 +396,7 @@ class AsyncResearchExecutor(ResearchExecutor):
             # Step 3: Generate document
             self._update_progress(job, "running", "Generating document...", "doc_generation")
             doc_tool = DocumentGenerationTool()
-            doc_result = doc_tool.generate_document(results, "word", "projects", attach_to_ado=True, story_id=job.story_id)
+            doc_result = doc_tool.generate_document(results, "markdown", "projects", attach_to_ado=True, story_id=job.story_id)
             
             # Complete
             job.status = "completed"
@@ -544,7 +544,14 @@ class DeepResearchExecutor(ResearchExecutor):
                 
                 if final_message:
                     # Format results
+                    print(f"📄 Processing final message for job {job.job_id}", file=sys.stderr)
+                    print(f"📄 Message has {len(final_message.text_messages)} text messages", file=sys.stderr)
+                    
                     research_text = "\n\n".join([t.text.value.strip() for t in final_message.text_messages])
+                    
+                    print(f"📄 Extracted research text length: {len(research_text)} characters", file=sys.stderr)
+                    if len(research_text) < 100:
+                        print(f"📄 Short research text: '{research_text}'", file=sys.stderr)
                     
                     # Add citations
                     if final_message.url_citation_annotations:
@@ -556,6 +563,27 @@ class DeepResearchExecutor(ResearchExecutor):
                             if url not in seen_urls:
                                 research_text += f"- [{title}]({url})\n"
                                 seen_urls.add(url)
+                    
+                    # Try to save raw research text locally for debugging (optional)
+                    try:
+                        local_filename = f"deep-research-raw-{job.story_id}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.md"
+                        local_path = Path("research_output") / local_filename
+                        
+                        # Create output directory if it doesn't exist
+                        local_path.parent.mkdir(exist_ok=True)
+                        
+                        with open(local_path, 'w', encoding='utf-8') as f:
+                            f.write(f"# Deep Research Raw Output\n\n")
+                            f.write(f"**Story ID:** {job.story_id}\n")
+                            f.write(f"**Job ID:** {job.job_id}\n")
+                            f.write(f"**Custom Prompt:** {job.custom_prompt}\n")
+                            f.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                            f.write(f"---\n\n")
+                            f.write(research_text)
+                        
+                        print(f"💾 Saved raw research output to: {local_path}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"⚠️ Could not save local raw file (continuing anyway): {e}", file=sys.stderr)
                     
                     # Generate document
                     self._update_progress(job, "running", "Generating final document...", "doc_generation")
@@ -571,7 +599,31 @@ class DeepResearchExecutor(ResearchExecutor):
                     
                     # Create document
                     doc_tool = DocumentGenerationTool()
-                    doc_url = doc_tool.generate_document(final_result, "word", "projects", attach_to_ado=True, story_id=job.story_id)
+                    doc_url = doc_tool.generate_document(final_result, "markdown", "projects", attach_to_ado=True, story_id=job.story_id)
+                    
+                    # Try to save the formatted document locally (optional)
+                    try:
+                        formatted_filename = f"deep-research-formatted-{job.story_id}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.md"
+                        formatted_path = Path("research_output") / formatted_filename
+                        
+                        # Generate the same content that goes to ADO for comparison
+                        project_name = project_context.get("project_name", "Deep Research")
+                        formatted_content = f"# {project_name} - Deep Research\n\n"
+                        formatted_content += "## Project Overview\n\n"
+                        formatted_content += story_details + "\n\n"
+                        formatted_content += "## Deep Research\n\n"
+                        if research_text and research_text.strip():
+                            formatted_content += research_text + "\n\n"
+                        else:
+                            formatted_content += "Research results were not available or could not be generated.\n\n"
+                        formatted_content += f"\n*Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*\n"
+                        
+                        with open(formatted_path, 'w', encoding='utf-8') as f:
+                            f.write(formatted_content)
+                        
+                        print(f"💾 Saved formatted document to: {formatted_path}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"⚠️ Could not save local formatted file (continuing anyway): {e}", file=sys.stderr)
                     
                     # Complete successfully
                     job.status = "completed"
@@ -665,13 +717,30 @@ class UnifiedResearchService:
         
         self.jobs[job_id] = job
         
-        # Start execution in background thread
+        # Start execution in background thread with error handling
         executor = self.executors[strategy]
-        thread = threading.Thread(target=executor.execute, args=(job,))
+        thread = threading.Thread(target=self._execute_job_safely, args=(executor, job))
         thread.daemon = True
         thread.start()
         
         return job_id
+    
+    def _execute_job_safely(self, executor, job: ResearchJob) -> None:
+        """Execute a job with proper error handling and logging."""
+        try:
+            print(f"🚀 Starting execution for job {job.job_id} (strategy: {job.strategy})", file=sys.stderr)
+            executor.execute(job)
+            print(f"✅ Completed execution for job {job.job_id}", file=sys.stderr)
+        except Exception as e:
+            print(f"❌ Job {job.job_id} failed with exception: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            
+            # Update job status with error
+            job.status = "failed"
+            job.error = f"Execution failed: {str(e)}"
+            job.failed_at = datetime.now().isoformat()
+            job.failed_step = job.current_step or "execution"
     
     def get_status(self, job_id: str) -> Dict[str, Any]:
         """Get job status."""
