@@ -126,7 +126,7 @@ async def handle_list_tools() -> list[Tool]:
         ),
         Tool(
             name="generate_document",
-            description="Generate and store a project kickoff document in Azure Blob Storage",
+            description="Generate and store a project kickoff document in Azure Blob Storage or attach to ADO story",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -142,9 +142,43 @@ async def handle_list_tools() -> list[Tool]:
                     "storage_container": {
                         "type": "string",
                         "description": "Azure storage container name (default: projects)"
+                    },
+                    "attach_to_ado": {
+                        "type": "boolean",
+                        "description": "If true, attach document to ADO story instead of just storing in blob"
+                    },
+                    "story_id": {
+                        "type": "string",
+                        "description": "ADO story ID (required if attach_to_ado is true)"
                     }
                 },
                 "required": ["content"]
+            }
+        ),
+        Tool(
+            name="attach_file_to_ado_story",
+            description="Upload a file attachment directly to an Azure DevOps user story",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "story_id": {
+                        "type": "string",
+                        "description": "The ID of the Azure DevOps user story"
+                    },
+                    "file_content": {
+                        "type": "string",
+                        "description": "Base64 encoded file content"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Name of the file to attach"
+                    },
+                    "comment": {
+                        "type": "string",
+                        "description": "Optional comment for the attachment"
+                    }
+                },
+                "required": ["story_id", "file_content", "filename"]
             }
         ),
         Tool(
@@ -266,11 +300,30 @@ async def handle_call_tool(name: str, arguments: dict[str, Any] | None) -> list[
         content = arguments.get("content")
         document_type = arguments.get("document_type", "word")
         storage_container = arguments.get("storage_container", "projects")
+        attach_to_ado = arguments.get("attach_to_ado", False)
+        story_id = arguments.get("story_id")
         if not content:
             return [TextContent(type="text", text="Error: content is required")]
         
-        result = doc_tool.generate_document(content, document_type, storage_container)
+        result = doc_tool.generate_document(content, document_type, storage_container, attach_to_ado, story_id)
         return [TextContent(type="text", text=result)]
+    
+    elif name == "attach_file_to_ado_story":
+        story_id = arguments.get("story_id")
+        file_content = arguments.get("file_content")
+        filename = arguments.get("filename")
+        comment = arguments.get("comment")
+        
+        if not all([story_id, file_content, filename]):
+            return [TextContent(type="text", text="Error: story_id, file_content, and filename are required")]
+        
+        try:
+            import base64
+            file_bytes = base64.b64decode(file_content)
+            result = ado_tool.upload_attachment_to_story(story_id, file_bytes, filename, comment)
+            return [TextContent(type="text", text=result)]
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error processing file attachment: {str(e)}")]
     
     elif name == "list_research_documents":
         storage_container = arguments.get("storage_container", "projects")

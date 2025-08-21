@@ -36,6 +36,62 @@ class AzureDevOpsMCPTool:
             raise ValueError("ADO_PAT environment variable is not set")
         return {"Authorization": f"Basic {b64encode(f':{pat}'.encode()).decode()}"}
 
+    def upload_attachment_to_story(self, story_id: str, file_content: bytes, filename: str, comment: str = None) -> str:
+        """Upload a file attachment to an Azure DevOps user story.
+        
+        Args:
+            story_id: The ID of the Azure DevOps user story.
+            file_content: The file content as bytes.
+            filename: Name of the file to attach.
+            comment: Optional comment for the attachment.
+            
+        Returns:
+            str: Success message with attachment details or error message.
+        """
+        try:
+            # Step 1: Upload attachment to ADO attachment storage
+            upload_url = f"{self.base_url}/wit/attachments?api-version=7.1&fileName={filename}"
+            
+            headers = self._get_auth_header()
+            headers["Content-Type"] = "application/octet-stream"
+            
+            upload_response = requests.post(upload_url, headers=headers, data=file_content)
+            upload_response.raise_for_status()
+            
+            attachment_data = upload_response.json()
+            attachment_id = attachment_data["id"]
+            attachment_url = attachment_data["url"]
+            
+            # Step 2: Link attachment to work item
+            patch_url = f"{self.base_url}/wit/workitems/{story_id}?api-version=7.1"
+            
+            patch_headers = self._get_auth_header()
+            patch_headers["Content-Type"] = "application/json-patch+json"
+            
+            patch_operations = [
+                {
+                    "op": "add",
+                    "path": "/relations/-",
+                    "value": {
+                        "rel": "AttachedFile",
+                        "url": attachment_url,
+                        "attributes": {
+                            "comment": comment or f"Attachment: {filename}"
+                        }
+                    }
+                }
+            ]
+            
+            patch_response = requests.patch(patch_url, headers=patch_headers, json=patch_operations)
+            patch_response.raise_for_status()
+            
+            return f"Successfully attached '{filename}' to story {story_id}. Attachment ID: {attachment_id}"
+            
+        except requests.exceptions.HTTPError as e:
+            return f"HTTP error attaching file to story {story_id}: {e.response.status_code} - {e.response.text}"
+        except Exception as e:
+            return f"Failed to attach file to story {story_id}: {e}"
+
     def get_azure_devops_story(self, story_id: str) -> str:
         """Get a user story's title, description, state, dates, and assignee from Azure DevOps.
         
@@ -351,7 +407,7 @@ class ProjectKickoffTool:
 
 class DocumentGenerationTool:
     def __init__(self):
-        pass
+        self.ado_tool = AzureDevOpsMCPTool()
     
     def _get_blob_service_client(self):
         """Get Azure Blob Storage client."""
@@ -373,29 +429,35 @@ class DocumentGenerationTool:
             return BlobServiceClient(account_url=account_url, credential=DefaultAzureCredential())
     
     def generate_document(self, content: dict, document_type: str = "word", 
-                         storage_container: str = "projects") -> str:
+                         storage_container: str = "projects", attach_to_ado: bool = False,
+                         story_id: str = None) -> str:
         """Generate and store a project kickoff document.
         
         Args:
             content: Dictionary with research results and project details
             document_type: Type of document to generate (word, markdown)
             storage_container: Azure storage container name
+            attach_to_ado: If True, attach document to ADO story instead of just storing in blob
+            story_id: ADO story ID (required if attach_to_ado is True)
             
         Returns:
-            str: URL or path to the generated document
+            str: URL or path to the generated document, or attachment confirmation
         """
         try:
+            if attach_to_ado and not story_id:
+                return "Error: story_id is required when attach_to_ado is True"
+            
             if document_type == "word":
-                return self._generate_word_document(content, storage_container)
+                return self._generate_word_document(content, storage_container, attach_to_ado, story_id)
             elif document_type == "markdown":
-                return self._generate_markdown_document(content, storage_container)
+                return self._generate_markdown_document(content, storage_container, attach_to_ado, story_id)
             else:
                 return f"Unsupported document type: {document_type}"
                 
         except Exception as e:
             return f"Document generation failed: {e}"
     
-    def _generate_word_document(self, content: dict, container: str) -> str:
+    def _generate_word_document(self, content: dict, container: str, attach_to_ado: bool = False, story_id: str = None) -> str:
         """Generate Word document from research content."""
         doc = Document()
         
@@ -425,9 +487,22 @@ class DocumentGenerationTool:
         
         filename = f"project-kickoff-{content.get('project_context', {}).get('story_id', 'unknown')}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.docx"
         
-        return self._upload_to_blob_storage(buffer.getvalue(), filename, container, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        if attach_to_ado and story_id:
+            # Attach directly to ADO story (primary operation)
+            attachment_result = self.ado_tool.upload_attachment_to_story(
+                story_id, buffer.getvalue(), filename, "Project research document"
+            )
+            
+            # Try blob storage as backup, but don't fail if it doesn't work
+            try:
+                blob_result = self._upload_to_blob_storage(buffer.getvalue(), filename, container, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                return f"{attachment_result}\n\nBackup also stored: {blob_result}"
+            except Exception as blob_error:
+                return f"{attachment_result}\n\nNote: Blob storage backup failed ({blob_error}), but ADO attachment succeeded."
+        else:
+            return self._upload_to_blob_storage(buffer.getvalue(), filename, container, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     
-    def _generate_markdown_document(self, content: dict, container: str) -> str:
+    def _generate_markdown_document(self, content: dict, container: str, attach_to_ado: bool = False, story_id: str = None) -> str:
         """Generate Markdown document from research content."""
         project_name = content.get("project_context", {}).get("project_name", "Project Kickoff Research")
         
@@ -449,7 +524,20 @@ class DocumentGenerationTool:
         
         filename = f"project-kickoff-{content.get('project_context', {}).get('story_id', 'unknown')}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.md"
         
-        return self._upload_to_blob_storage(md_content.encode('utf-8'), filename, container, "text/markdown")
+        if attach_to_ado and story_id:
+            # Attach directly to ADO story (primary operation)
+            attachment_result = self.ado_tool.upload_attachment_to_story(
+                story_id, md_content.encode('utf-8'), filename, "Project research document"
+            )
+            
+            # Try blob storage as backup, but don't fail if it doesn't work
+            try:
+                blob_result = self._upload_to_blob_storage(md_content.encode('utf-8'), filename, container, "text/markdown")
+                return f"{attachment_result}\n\nBackup also stored: {blob_result}"
+            except Exception as blob_error:
+                return f"{attachment_result}\n\nNote: Blob storage backup failed ({blob_error}), but ADO attachment succeeded."
+        else:
+            return self._upload_to_blob_storage(md_content.encode('utf-8'), filename, container, "text/markdown")
     
     def _upload_to_blob_storage(self, content: bytes, filename: str, container: str, content_type: str) -> str:
         """Upload content to Azure Blob Storage."""

@@ -203,7 +203,7 @@ class RobustDeepResearch:
                     # Create document
                     from mcp_tools import DocumentGenerationTool
                     doc_tool = DocumentGenerationTool()
-                    doc_url = doc_tool.generate_document(final_result, "word", "projects")
+                    doc_url = doc_tool.generate_document(final_result, "word", "projects", attach_to_ado=True, story_id=story_id)
                     
                     # Complete successfully
                     self.jobs[job_id].update({
