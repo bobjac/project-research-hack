@@ -71,6 +71,7 @@ class AsyncResearchService:
             
             # Generate document  
             doc_result = self.doc_tool.generate_document(results, "markdown", "projects", attach_to_ado=True, story_id=story_id)
+
             
             # Update final status
             self.status_storage[job_id].update({
@@ -104,6 +105,7 @@ class AsyncResearchService:
             
             # Generate document
             doc_result = self.doc_tool.generate_document(results, "markdown", "projects", attach_to_ado=True, story_id=story_id)
+
             
             # Update final status
             self.status_storage[job_id].update({

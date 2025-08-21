@@ -483,6 +483,7 @@ class DocumentGenerationTool:
                 else:
                     doc.add_paragraph("Research results were not available or could not be generated.")
                     
+
                 doc.add_page_break()
         
         # Add generation timestamp
@@ -533,6 +534,7 @@ class DocumentGenerationTool:
                     md_content += results + "\n\n"
                 else:
                     md_content += "Research results were not available or could not be generated.\n\n"
+
         
         # Add generation timestamp
         md_content += f"\n*Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*\n"

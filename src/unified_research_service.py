@@ -553,6 +553,7 @@ class DeepResearchExecutor(ResearchExecutor):
                     if len(research_text) < 100:
                         print(f"📄 Short research text: '{research_text}'", file=sys.stderr)
                     
+
                     # Add citations
                     if final_message.url_citation_annotations:
                         research_text += "\n\n## References and Citations\n"
@@ -585,6 +586,7 @@ class DeepResearchExecutor(ResearchExecutor):
                     except Exception as e:
                         print(f"⚠️ Could not save local raw file (continuing anyway): {e}", file=sys.stderr)
                     
+
                     # Generate document
                     self._update_progress(job, "running", "Generating final document...", "doc_generation")
                     
@@ -720,11 +722,13 @@ class UnifiedResearchService:
         # Start execution in background thread with error handling
         executor = self.executors[strategy]
         thread = threading.Thread(target=self._execute_job_safely, args=(executor, job))
+
         thread.daemon = True
         thread.start()
         
         return job_id
     
+
     def _execute_job_safely(self, executor, job: ResearchJob) -> None:
         """Execute a job with proper error handling and logging."""
         try:
@@ -742,6 +746,7 @@ class UnifiedResearchService:
             job.failed_at = datetime.now().isoformat()
             job.failed_step = job.current_step or "execution"
     
+
     def get_status(self, job_id: str) -> Dict[str, Any]:
         """Get job status."""
         job = self.jobs.get(job_id)

@@ -80,6 +80,7 @@ class FastResearchService:
             from mcp_tools import DocumentGenerationTool
             doc_tool = DocumentGenerationTool()
             doc_url = doc_tool.generate_document(final_result, "markdown", "projects", attach_to_ado=True, story_id=story_id)
+
             
             # Complete
             self.jobs[job_id].update({
