@@ -59,7 +59,7 @@ You should use the following as guidance:
    - Extend the observability of the solution
 6. Please provide all resources that you are using for your predictions including the dates. I want to make sure we are basing the proposed solution on the latest information
  
-This solution should be for Microsoft Azure. When creating the proposed solution, we are only interested in an Azure Solution. No other cloud provider should be considered.
+Please provide optimal solution based on the findings and provide an alternative Microsoft Azure-only solution as well.
  
 ## Project Details
 {story_details}
@@ -129,7 +129,7 @@ def main():
         project="Code-With Engagement Portfolio"  
     )
     
-    story_id = "1186"
+    story_id = "1198"
     story_details = ado_tool.get_azure_devops_story(story_id)
     
     if "Failed to retrieve" in story_details:
