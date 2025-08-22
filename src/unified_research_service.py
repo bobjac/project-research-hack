@@ -87,9 +87,55 @@ class ResearchExecutor(ABC):
         job.last_updated = datetime.now().isoformat()
         print(f"Job {job.job_id}: {progress}", file=sys.stderr)
     
+    def _sanitize_content_for_http_transport(self, content: str) -> str:
+        """Sanitize content to prevent HTTP transport issues by breaking up long lines."""
+        lines = content.split('\n')
+        sanitized_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if len(line) > 200:  # If line is too long, break it up
+                print(f"⚠️ Sanitizing long line ({len(line)} chars) to prevent HTTP transport issues", file=sys.stderr)
+                # Split on common sentence boundaries
+                import re
+                # Split on periods followed by space, but preserve URLs
+                sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\!|\?)\s+', line)
+                for sentence in sentences:
+                    sentence = sentence.strip()
+                    if len(sentence) > 200:
+                        # Further split very long sentences on commas or other delimiters
+                        parts = re.split(r'[,;]\s+', sentence)
+                        for part in parts:
+                            if len(part) > 200:
+                                # Final fallback: split at word boundaries
+                                words = part.split()
+                                current_line = ""
+                                for word in words:
+                                    if len(current_line + " " + word) > 200:
+                                        if current_line:
+                                            sanitized_lines.append(current_line.strip())
+                                        current_line = word
+                                    else:
+                                        current_line += " " + word if current_line else word
+                                if current_line:
+                                    sanitized_lines.append(current_line.strip())
+                            else:
+                                sanitized_lines.append(part.strip())
+                    else:
+                        sanitized_lines.append(sentence)
+            else:
+                sanitized_lines.append(line)
+        
+        sanitized_content = '\n'.join([line for line in sanitized_lines if line])
+        print(f"📄 Content sanitization: {len(content)} -> {len(sanitized_content)} chars", file=sys.stderr)
+        return sanitized_content
+
     def _extract_context(self, story_details: str, story_id: str) -> Dict[str, Any]:
         """Extract project context from story details."""
-        lines = story_details.split('\n')
+        # First sanitize the content to prevent HTTP transport issues
+        sanitized_details = self._sanitize_content_for_http_transport(story_details)
+        
+        lines = sanitized_details.split('\n')
         
         # Extract title
         title = "Unknown Project"
@@ -111,7 +157,8 @@ class ResearchExecutor(ABC):
         return {
             "project_name": title,
             "project_context": description.strip() or f"Azure DevOps Story {story_id}",
-            "story_id": story_id
+            "story_id": story_id,
+            "sanitized_details": sanitized_details  # Include sanitized version for the deep research
         }
 
 
@@ -453,8 +500,9 @@ class DeepResearchExecutor(ResearchExecutor):
             project_context = self._extract_context(story_details, job.story_id)
             job.project_context = project_context
             
-            # Step 3: Format the custom prompt with context
-            formatted_prompt = self._format_custom_prompt(job.custom_prompt, project_context, story_details)
+            # Step 3: Format the custom prompt with context (use sanitized details)
+            sanitized_details = project_context.get("sanitized_details", story_details)
+            formatted_prompt = self._format_custom_prompt(job.custom_prompt, project_context, sanitized_details)
             
             # Step 4: Execute deep research with Azure AI agents
             self._update_progress(job, "running", "Starting Azure AI deep research (this may take 20-30 minutes)...", "deep_research")
