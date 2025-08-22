@@ -82,7 +82,7 @@ async def handle_list_tools() -> list[Tool]:
                     },
                     "custom_prompt": {
                         "type": "string",
-                        "description": "Custom research prompt (required for deep strategy)"
+                        "description": "Custom research prompt (optional for deep strategy - uses default Azure AI focus if not provided)"
                     },
                     "research_types": {
                         "type": "array",
@@ -255,9 +255,9 @@ async def handle_call_tool(name: str, arguments: dict[str, Any] | None) -> list[
         if not story_id or not strategy:
             return [TextContent(type="text", text="Error: story_id and strategy are required")]
         
-        # Validate strategy-specific requirements
+        # Set default custom prompt for deep research if not provided
         if strategy == "deep" and not custom_prompt:
-            return [TextContent(type="text", text="Error: custom_prompt is required for deep research strategy")]
+            custom_prompt = ""  # Use default Azure AI focused prompt
         
         try:
             strategy_enum = ResearchStrategy(strategy)
