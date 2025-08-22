@@ -610,9 +610,23 @@ class DeepResearchExecutor(ResearchExecutor):
                     
                     print(f"📄 Extracted raw research text length: {len(raw_research_text)} characters", file=sys.stderr)
                     
-                    # Extract the final report section using our new method
+                    # Enhanced debugging for message extraction
+                    print(f"📄 Raw research text sample: {raw_research_text[:500]}...", file=sys.stderr)
+                    if 'cot_summary' in raw_research_text:
+                        cot_count = raw_research_text.count('cot_summary')
+                        print(f"⚠️ Found {cot_count} cot_summary entries in raw content", file=sys.stderr)
+                    
+                    # Extract the final report section using our enhanced method
                     research_text = self._extract_final_report_from_message(raw_research_text)
                     print(f"📄 Final report length: {len(research_text)} characters", file=sys.stderr)
+                    
+                    # Verify extraction worked properly
+                    print(f"📄 Final report sample: {research_text[:500]}...", file=sys.stderr)
+                    if 'cot_summary' in research_text:
+                        remaining_cot = research_text.count('cot_summary')
+                        print(f"❌ Still have {remaining_cot} cot_summary entries in final content", file=sys.stderr)
+                    else:
+                        print(f"✅ Successfully removed all cot_summary entries", file=sys.stderr)
                     
                     # If text_messages is empty or short, try alternative extraction methods
                     if len(raw_research_text.strip()) < 100:
@@ -734,19 +748,46 @@ class DeepResearchExecutor(ResearchExecutor):
             job.failed_step = job.current_step
     
     def _extract_final_report_from_message(self, content: str) -> str:
-        """Extract the final research report from the message content."""
+        """Enhanced extraction of final research report from message content."""
         lines = content.split('\n')
         
-        # Look for the final report marker
+        # Look for the final report marker (multiple variations)
         final_report_start = None
         for i, line in enumerate(lines):
-            if line.startswith('Final Report: #') or 'Final Report:' in line:
+            line_lower = line.lower().strip()
+            # Check for various forms of the final report marker
+            if (line.startswith('Final Report: #') or 
+                'Final Report:' in line or
+                line_lower.startswith('final report:') or
+                line_lower.startswith('## final report') or
+                line_lower.startswith('# final report')):
                 final_report_start = i
                 break
         
+        # If no final report marker found, try to filter out cot_summary entries
         if final_report_start is None:
-            print("⚠️ Could not find 'Final Report:' marker, using full content", file=sys.stderr)
-            return content
+            print("⚠️ No 'Final Report:' marker found, filtering cot_summary entries", file=sys.stderr)
+            
+            # Filter out cot_summary lines and other noise
+            filtered_lines = []
+            for line in lines:
+                line_stripped = line.strip()
+                # Skip cot_summary entries and other noise
+                if (line_stripped.startswith('cot_summary:') or
+                    line_stripped.startswith('cot_summary ') or
+                    line_stripped == '' or
+                    line_stripped.startswith('thinking:') or
+                    line_stripped.startswith('analysis:')):
+                    continue
+                filtered_lines.append(line)
+            
+            # If we have substantial content after filtering, use it
+            if len(filtered_lines) > 5:  # At least some content
+                print(f"✅ Filtered out noise, using {len(filtered_lines)} lines", file=sys.stderr)
+                return '\n'.join(filtered_lines)
+            else:
+                print("⚠️ Not enough content after filtering, using original", file=sys.stderr)
+                return content
         
         # Extract everything from the final report onwards
         report_lines = lines[final_report_start:]
@@ -754,11 +795,20 @@ class DeepResearchExecutor(ResearchExecutor):
         # Remove the "Final Report: " prefix from the first line
         if report_lines[0].startswith('Final Report: '):
             report_lines[0] = report_lines[0].replace('Final Report: ', '')
+        elif report_lines[0].lower().startswith('final report:'):
+            # Handle case variations
+            report_lines[0] = report_lines[0][len('final report:'):].strip()
         
         # Join the lines back together
         final_report = '\n'.join(report_lines)
         
-        return final_report
+        # Final cleanup - remove any remaining cot_summary entries
+        final_lines = []
+        for line in final_report.split('\n'):
+            if not line.strip().startswith('cot_summary:'):
+                final_lines.append(line)
+        
+        return '\n'.join(final_lines)
 
     def _format_custom_prompt(self, custom_prompt: str, project_context: Dict[str, Any], story_details: str) -> str:
         """Format custom prompt with project context."""

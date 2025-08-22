@@ -105,17 +105,30 @@ def extract_project_context(story_details: str, story_id: str) -> dict:
 def capture_ado_story_details(messages) -> str:
     """Extract ADO story details from agent messages."""
     story_details = ""
-    for message in messages:
-        if message.role == "agent":
+    print(f"=== CAPTURE_ADO_STORY_DETAILS DEBUG ===")
+    print(f"Processing {len(messages)} messages")
+    
+    for i, message in enumerate(messages):
+        print(f"Message {i}: Role={message.role}")
+        if message.role == "agent" or message.role == MessageRole.AGENT:
+            print(f"  Processing agent message {i}")
+            print(f"  Has content attr: {hasattr(message, 'content')}")
+            if hasattr(message, 'content'):
+                print(f"  Content exists: {bool(message.content)}")
+                print(f"  Content type: {type(message.content)}")
+            
             # Handle different content formats
             if hasattr(message, 'content') and message.content:
                 if isinstance(message.content, str):
                     content_text = message.content
                 elif isinstance(message.content, list):
-                    # Handle list format where each item has 'text' property
+                    # Handle list format where each item might be MessageTextContent or dict
                     content_parts = []
                     for item in message.content:
-                        if isinstance(item, dict) and 'text' in item:
+                        if hasattr(item, 'text') and hasattr(item.text, 'value'):
+                            # MessageTextContent object
+                            content_parts.append(item.text.value)
+                        elif isinstance(item, dict) and 'text' in item:
                             if isinstance(item['text'], dict) and 'value' in item['text']:
                                 content_parts.append(item['text']['value'])
                             else:
@@ -126,14 +139,35 @@ def capture_ado_story_details(messages) -> str:
                 else:
                     content_text = str(message.content)
                 
-                if ("**Story" in content_text or "**Title:**" in content_text) and "State:" in content_text:
+                # Debug the content we're checking  
+                has_story = ("**Story" in content_text or "**Title:**" in content_text or 
+                           "### **Title:**" in content_text or "Title:" in content_text or
+                           "### Story Details" in content_text or "Story 1198" in content_text)
+                has_state = ("State:" in content_text or "**State:**" in content_text or 
+                           "### **State:**" in content_text)
+                print(f"  Checking agent message: has_story={has_story}, has_state={has_state}")
+                if len(content_text) > 100:
+                    print(f"  Content sample: {content_text[:100]}...")
+                
+                if has_story and has_state:
                     story_details = content_text
+                    print(f"  ✅ Found ADO story details! Length: {len(content_text)} characters")
                     break
             elif hasattr(message, 'text_messages'):
                 # Handle ThreadMessage format
                 content_text = "\n".join([t.text.value for t in message.text_messages])
-                if ("**Story" in content_text or "**Title:**" in content_text) and "State:" in content_text:
+                has_story = ("**Story" in content_text or "**Title:**" in content_text or 
+                           "### **Title:**" in content_text or "Title:" in content_text or
+                           "### Story Details" in content_text or "Story 1198" in content_text)
+                has_state = ("State:" in content_text or "**State:**" in content_text or 
+                           "### **State:**" in content_text)
+                print(f"  Checking ThreadMessage: has_story={has_story}, has_state={has_state}")
+                if len(content_text) > 100:
+                    print(f"  Content sample: {content_text[:100]}...")
+                
+                if has_story and has_state:
                     story_details = content_text
+                    print(f"  ✅ Found ADO story details in ThreadMessage! Length: {len(content_text)} characters")
                     break
     return story_details
 
@@ -207,6 +241,9 @@ with project_client:
         print(f"Message {i}: Role={msg.role}, Type={type(msg.content)}")
         if hasattr(msg, 'content') and msg.content:
             print(f"  Content preview: {str(msg.content)[:200]}...")
+            
+    print("\n=== ADO STORY EXTRACTION DEBUG ===")
+    print("Looking for content containing '**Story' or '**Title:**' AND ('State:' or '**State:**')")
     
     story_details = capture_ado_story_details(messages_list)
     
