@@ -462,29 +462,71 @@ class DocumentGenerationTool:
         doc = Document()
         
         # Add title
-        project_name = content.get("project_context", {}).get("project_name", "Project Kickoff Research")
-        title = doc.add_heading(f"{project_name} - Kickoff Research", 0)
+        project_name = content.get("project_context", {}).get("project_name", "Project Research")
+        title = doc.add_heading(f"{project_name} - Deep Research", 0)
         
         # Add project details section
         doc.add_heading("Project Overview", level=1)
         if "project_details" in content:
             doc.add_paragraph(content["project_details"])
         
-        # Add research results
+        # Add custom prompt if present
+        if "custom_prompt" in content and content["custom_prompt"]:
+            doc.add_heading("Research Instructions", level=1)
+            doc.add_paragraph(content["custom_prompt"])
+        
+        # Add research results with better formatting
         if "research_results" in content:
             for research_type, results in content["research_results"].items():
                 # Clean up research type name for display
                 display_name = research_type.replace("_", " ").title()
-                doc.add_heading(f"{display_name} Research", level=1)
+                doc.add_heading(f"{display_name}", level=1)
                 
                 # Handle empty or invalid results
                 if results and isinstance(results, str) and results.strip():
-                    doc.add_paragraph(results)
+                    # Split content into paragraphs for better formatting
+                    content_lines = results.split('\n')
+                    current_paragraph = ""
+                    
+                    for line in content_lines:
+                        line = line.strip()
+                        if not line:
+                            # Empty line - end current paragraph if exists
+                            if current_paragraph:
+                                doc.add_paragraph(current_paragraph)
+                                current_paragraph = ""
+                        elif line.startswith('#'):
+                            # Heading - add current paragraph and then heading
+                            if current_paragraph:
+                                doc.add_paragraph(current_paragraph)
+                                current_paragraph = ""
+                            
+                            # Determine heading level
+                            heading_level = len(line) - len(line.lstrip('#'))
+                            heading_text = line.lstrip('# ').strip()
+                            if heading_level <= 3 and heading_text:  # Only use as heading if reasonable level
+                                doc.add_heading(heading_text, level=min(heading_level + 1, 3))
+                            else:
+                                current_paragraph += line + " "
+                        elif line.startswith('- ') or line.startswith('* '):
+                            # Bullet point - add current paragraph and then bullet
+                            if current_paragraph:
+                                doc.add_paragraph(current_paragraph)
+                                current_paragraph = ""
+                            doc.add_paragraph(line[2:].strip(), style='List Bullet')
+                        else:
+                            # Regular text - add to current paragraph
+                            current_paragraph += line + " "
+                    
+                    # Add any remaining paragraph
+                    if current_paragraph:
+                        doc.add_paragraph(current_paragraph)
                 else:
                     doc.add_paragraph("Research results were not available or could not be generated.")
-                    
-
-                doc.add_page_break()
+                
+                # Add page break after each major section (but not after the last one)
+                if list(content["research_results"].keys()).index(research_type) < len(content["research_results"]) - 1:
+                    doc.add_page_break()
         
         # Add generation timestamp
         doc.add_paragraph(f"\nGenerated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -494,7 +536,7 @@ class DocumentGenerationTool:
         doc.save(buffer)
         buffer.seek(0)
         
-        filename = f"project-kickoff-{content.get('project_context', {}).get('story_id', 'unknown')}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.docx"
+        filename = f"deep-research-{content.get('project_context', {}).get('story_id', 'unknown')}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.docx"
         
         if attach_to_ado and story_id:
             # Attach directly to ADO story (primary operation)

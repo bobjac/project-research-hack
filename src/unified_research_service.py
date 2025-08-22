@@ -206,7 +206,7 @@ class FastResearchExecutor(ResearchExecutor):
             }
             
             doc_tool = DocumentGenerationTool()
-            doc_url = doc_tool.generate_document(final_result, "markdown", "projects", attach_to_ado=True, story_id=job.story_id)
+            doc_url = doc_tool.generate_document(final_result, "word", "projects", attach_to_ado=True, story_id=job.story_id)
             
             # Complete
             job.status = "completed"
@@ -396,7 +396,7 @@ class AsyncResearchExecutor(ResearchExecutor):
             # Step 3: Generate document
             self._update_progress(job, "running", "Generating document...", "doc_generation")
             doc_tool = DocumentGenerationTool()
-            doc_result = doc_tool.generate_document(results, "markdown", "projects", attach_to_ado=True, story_id=job.story_id)
+            doc_result = doc_tool.generate_document(results, "word", "projects", attach_to_ado=True, story_id=job.story_id)
             
             # Complete
             job.status = "completed"
@@ -633,7 +633,7 @@ class DeepResearchExecutor(ResearchExecutor):
                     
                     # Create document
                     doc_tool = DocumentGenerationTool()
-                    doc_url = doc_tool.generate_document(final_result, "markdown", "projects", attach_to_ado=True, story_id=job.story_id)
+                    doc_url = doc_tool.generate_document(final_result, "word", "projects", attach_to_ado=True, story_id=job.story_id)
                     
                     # Try to save the formatted document locally (optional)
                     try:
