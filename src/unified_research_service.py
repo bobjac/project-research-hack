@@ -206,7 +206,7 @@ class FastResearchExecutor(ResearchExecutor):
             }
             
             doc_tool = DocumentGenerationTool()
-            doc_url = doc_tool.generate_document(final_result, "markdown", "projects", attach_to_ado=True, story_id=job.story_id)
+            doc_url = doc_tool.generate_document(final_result, "word", "projects", attach_to_ado=True, story_id=job.story_id)
             
             # Complete
             job.status = "completed"
@@ -396,7 +396,7 @@ class AsyncResearchExecutor(ResearchExecutor):
             # Step 3: Generate document
             self._update_progress(job, "running", "Generating document...", "doc_generation")
             doc_tool = DocumentGenerationTool()
-            doc_result = doc_tool.generate_document(results, "markdown", "projects", attach_to_ado=True, story_id=job.story_id)
+            doc_result = doc_tool.generate_document(results, "word", "projects", attach_to_ado=True, story_id=job.story_id)
             
             # Complete
             job.status = "completed"
@@ -469,11 +469,12 @@ class DeepResearchExecutor(ResearchExecutor):
             with self.project_client.agents as agents_client:
                 self._update_progress(job, "running", "Creating AI research agent...", "agent_creation")
                 
-                # Create agent
+                # Create agent (use deep research model for better performance)
                 agent = agents_client.create_agent(
                     model=self.model_deployment,
+                    #model=self.deep_research_model,  # Use o3-deep-research model
                     name=f"deep-research-agent-{job.job_id}",
-                    instructions="You are an expert research analyst. Provide comprehensive, detailed analysis with citations and specific recommendations. Use the deep research tool to gather current information from multiple sources.",
+                    instructions="You are an expert research analyst specializing in comprehensive technology and business research. Conduct thorough analysis using the deep research tool to gather current information from authoritative sources. Always provide detailed, well-structured responses with specific citations and actionable recommendations.",
                     tools=deep_research_tool.definitions,
                 )
                 
@@ -482,6 +483,12 @@ class DeepResearchExecutor(ResearchExecutor):
                 
                 # Send research query
                 self._update_progress(job, "running", "Executing deep research query...", "research_execution")
+                
+                # Debug: Log the prompt being sent
+                print(f"📝 Sending prompt for job {job.job_id}:", file=sys.stderr)
+                print(f"📝 First 300 chars: {formatted_prompt[:300]}...", file=sys.stderr)
+                print(f"📝 Using model: {self.deep_research_model}", file=sys.stderr)
+                
                 message = agents_client.messages.create(
                     thread_id=thread.id,
                     role="user", 
@@ -547,11 +554,36 @@ class DeepResearchExecutor(ResearchExecutor):
                     print(f"📄 Processing final message for job {job.job_id}", file=sys.stderr)
                     print(f"📄 Message has {len(final_message.text_messages)} text messages", file=sys.stderr)
                     
-                    research_text = "\n\n".join([t.text.value.strip() for t in final_message.text_messages])
+                    # Debug: Print message structure
+                    print(f"📄 Message attributes: {dir(final_message)}", file=sys.stderr)
+                    print(f"📄 Message content: {str(final_message)[:500]}...", file=sys.stderr)
                     
-                    print(f"📄 Extracted research text length: {len(research_text)} characters", file=sys.stderr)
-                    if len(research_text) < 100:
-                        print(f"📄 Short research text: '{research_text}'", file=sys.stderr)
+                    raw_research_text = "\n\n".join([t.text.value.strip() for t in final_message.text_messages])
+                    
+                    print(f"📄 Extracted raw research text length: {len(raw_research_text)} characters", file=sys.stderr)
+                    
+                    # Extract the final report section using our new method
+                    research_text = self._extract_final_report_from_message(raw_research_text)
+                    print(f"📄 Final report length: {len(research_text)} characters", file=sys.stderr)
+                    
+                    # If text_messages is empty or short, try alternative extraction methods
+                    if len(raw_research_text.strip()) < 100:
+                        print(f"📄 Short raw research text: '{raw_research_text}'", file=sys.stderr)
+                        
+                        # Try to extract content from other possible fields
+                        alternative_text = ""
+                        
+                        if hasattr(final_message, 'content') and final_message.content:
+                            print(f"📄 Trying message.content: {str(final_message.content)[:200]}...", file=sys.stderr)
+                            alternative_text = str(final_message.content)
+                        elif hasattr(final_message, 'text') and final_message.text:
+                            print(f"📄 Trying message.text: {str(final_message.text)[:200]}...", file=sys.stderr)
+                            alternative_text = str(final_message.text)
+                        
+                        # If we found alternative content, use it and extract final report
+                        if len(alternative_text.strip()) > len(raw_research_text.strip()):
+                            print(f"📄 Using alternative content (length: {len(alternative_text)})", file=sys.stderr)
+                            research_text = self._extract_final_report_from_message(alternative_text)
                     
 
                     # Add citations
@@ -601,7 +633,7 @@ class DeepResearchExecutor(ResearchExecutor):
                     
                     # Create document
                     doc_tool = DocumentGenerationTool()
-                    doc_url = doc_tool.generate_document(final_result, "markdown", "projects", attach_to_ado=True, story_id=job.story_id)
+                    doc_url = doc_tool.generate_document(final_result, "word", "projects", attach_to_ado=True, story_id=job.story_id)
                     
                     # Try to save the formatted document locally (optional)
                     try:
@@ -653,9 +685,70 @@ class DeepResearchExecutor(ResearchExecutor):
             job.failed_at = datetime.now().isoformat()
             job.failed_step = job.current_step
     
+    def _extract_final_report_from_message(self, content: str) -> str:
+        """Extract the final research report from the message content."""
+        lines = content.split('\n')
+        
+        # Look for the final report marker
+        final_report_start = None
+        for i, line in enumerate(lines):
+            if line.startswith('Final Report: #') or 'Final Report:' in line:
+                final_report_start = i
+                break
+        
+        if final_report_start is None:
+            print("⚠️ Could not find 'Final Report:' marker, using full content", file=sys.stderr)
+            return content
+        
+        # Extract everything from the final report onwards
+        report_lines = lines[final_report_start:]
+        
+        # Remove the "Final Report: " prefix from the first line
+        if report_lines[0].startswith('Final Report: '):
+            report_lines[0] = report_lines[0].replace('Final Report: ', '')
+        
+        # Join the lines back together
+        final_report = '\n'.join(report_lines)
+        
+        return final_report
+
     def _format_custom_prompt(self, custom_prompt: str, project_context: Dict[str, Any], story_details: str) -> str:
         """Format custom prompt with project context."""
-        formatted = f"""
+        # Use the Azure AI focused template when no custom prompt provided
+        if not custom_prompt or custom_prompt.strip() == "":
+            formatted = f"""
+# Deep Research Request
+
+## Project Context
+**Project:** {project_context['project_name']}
+**Story ID:** {project_context['story_id']}
+
+## Research Instructions
+I would like you to create a comprehensive research briefing for a potential upcoming project that can be consumed by the system architect.
+ 
+I would like you to identify the likely project scope based off the data provided. It will most likely be related to Agentic AI.
+ 
+You should use the following as guidance:
+1. Check the product description from the provided information to understand what the product does and predict what they may want to do with it using AI. Ideas are welcome.
+2. Look at their job postings to get an understanding of their tech stack. If you cannot determine or if there are multiple indications, please provide proposed guidance for the 3 most popular tech stacks.
+3. After you predict how agents might be added to their system, please provide a proposed architecture based on the tech stack(s)
+4. Ensure that your proposed architecture takes into account the delivery date. We would not want to propose a technical solution that is too immature or in alpha.
+5. Make a prediction as to how the customer would like to extend the solution. Please consider:
+   - Extending the code in the proposed solution
+   - Extending the solution to include low-code or visual extensions for non-developers
+   - Extend the observability of the solution
+6. Please provide all resources that you are using for your predictions including the dates. I want to make sure we are basing the proposed solution on the latest information
+ 
+This solution should be for Microsoft Azure. When creating the proposed solution, we are only interested in an Azure Solution. No other cloud provider should be considered.
+ 
+## Project Details
+{story_details}
+
+Please conduct comprehensive research addressing the above instructions. Use the deep research capabilities to gather current, authoritative information from multiple sources. Provide detailed analysis with specific citations and actionable recommendations.
+"""
+        else:
+            # Use custom prompt provided by user
+            formatted = f"""
 # Deep Research Request
 
 ## Project Context

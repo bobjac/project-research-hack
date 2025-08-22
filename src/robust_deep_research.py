@@ -245,13 +245,27 @@ class RobustDeepResearch:
 **Project:** {project_context['project_name']}
 **Story ID:** {project_context['story_id']}
 
+## Research Instructions
+I would like you to create a research briefing for a potential upcoming project that can be consumed by the system architect.
+ 
+I would like you to identify the likely project scope based off the data provided.  It will most likely be related to Agentic AI.
+ 
+You should use the following as guidance:
+1.  Check the product description from the provided information to understand what the product does and predict what they may want to do with it using AI.  Ideas as welcome.
+2.  Look at their job postings to get an undertsanding of their tech stack.  If you cannot determine or if there are multiple indications, please provide proposed guidance for the 3 most popular tech stacks.
+3.  After you predict how agents might be added to their system, please provide a proposed architecture based on the tech stack(s)
+4.  Ensure that you proposed architecure takes into account the delivery date.  We would not want to propose a technical solution that is too immature or in alpha.
+5.  Make a prediction as to how the customer would like to extend the solution.  Please consider:
+      - Extending the code in the proposed solution
+      - Extending the solution to include low-code or visual extensions for non-developers
+      - Extend the observability of the solution
+6.  Please provide all resources that you are using for your predictions including the dates.  I want to make sure we are basing the proposed solution on the latest information
+ 
+This solution should be for Microsoft Azure.  When creating the proposed solution, we are only interested in an Azure Solution.  No other cloud provider should be considered.
+ 
 ## Project Details
 {story_details}
 
-## Research Instructions
-{custom_prompt}
-
-Please conduct comprehensive research addressing the above instructions. Use the deep research tool to gather current, authoritative information from multiple sources. Provide detailed analysis with specific citations and actionable recommendations.
 """
         return formatted
     
