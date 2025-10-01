@@ -835,7 +835,9 @@ You should use the following as guidance:
    - Extending the code in the proposed solution
    - Extending the solution to include low-code or visual extensions for non-developers
    - Extend the observability of the solution
-6. Please provide all resources that you are using for your predictions including the dates. I want to make sure we are basing the proposed solution on the latest information
+6.  Make a prediction of any objects the customer might have to the proposed solution and provide counter arguments to the predicted objections.
+7.  Make a prediction of any questions the customer might ask about the solution and provide answers to the predicted questions.
+8.  Please provide all resources that you are using for your predictions including the dates.  I want to make sure we are basing the proposed solution on the latest information.
  
 This solution should be for Microsoft Azure. When creating the proposed solution, we are only interested in an Azure Solution. No other cloud provider should be considered.
  
